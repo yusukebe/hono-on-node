@@ -1,31 +1,43 @@
-import { Request, Response } from '@edge-runtime/primitives'
+import { createServer } from 'http'
+import { Request, Response, Headers } from 'undici'
 
 const mock_types = {
   Request: Request,
   Response: Response,
+  Headers: Headers,
 }
 
 // Mock
 Object.assign(global, mock_types)
 
-import type { Hono } from 'hono'
-import * as http from 'node:http'
-
 type Options = {
-  port: number
+  fetch: FetchCallback
+  port?: number
 }
 
-export const serve = (app: Hono, options: Options = { port: 3000 }) => {
-  const server = http.createServer(async (incoming, outgoing) => {
+type FetchCallback = (request: any) => Promise<any>
+
+export const serve = (option: Options) => {
+  const fetchCallback = option.fetch
+  const server = createServer()
+
+  server.on('request', async (incoming, outgoing) => {
     const method = incoming.method || 'GET'
     const url = new URL(`http://localhost${incoming.url}`)
-    const res = await app.request(url.toString(), { method: method })
+    // TODO
+    const res: Response = await fetchCallback(
+      new Request(url.toString(), {
+        method: method,
+      })
+    )
 
-    for (const key of res.headers.keys()) {
-      outgoing.setHeader(key, res.headers.get(key))
+    for (const h of res.headers) {
+      outgoing.setHeader(...h)
     }
     outgoing.statusCode = res.status
+    // TODO
     outgoing.end(await res.text())
   })
-  server.listen(options.port || 3000)
+
+  server.listen(option.port || 3000)
 }
