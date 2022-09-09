@@ -4,14 +4,15 @@
   "main": "index.js",
   "license": "MIT",
   "scripts": {
+    "dev": "nodemon",
     "start": "ts-node ./src/index.ts"
   },
   "dependencies": {
-    "@edge-runtime/ponyfill": "^1.1.0-beta.33",
     "hono": "^2.1.4",
     "undici": "^5.10.0"
   },
   "devDependencies": {
-    "@types/node": "^18.7.16"
+    "@types/node": "^18.7.16",
+    "nodemon": "^2.0.19"
   }
 }

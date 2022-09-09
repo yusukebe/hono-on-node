@@ -1,14 +1,14 @@
 import { createServer } from 'http'
 import { Request, Response, Headers } from 'undici'
 
-const mock_types = {
+const mockTypes = {
   Request: Request,
   Response: Response,
   Headers: Headers,
 }
 
 // Mock
-Object.assign(global, mock_types)
+Object.assign(global, mockTypes)
 
 type Options = {
   fetch: FetchCallback
@@ -24,10 +24,22 @@ export const serve = (option: Options) => {
   server.on('request', async (incoming, outgoing) => {
     const method = incoming.method || 'GET'
     const url = new URL(`http://localhost${incoming.url}`)
-    // TODO
+
+    const headerRecord: Record<string, string> = {}
+    let k = ''
+    for (const h of incoming.rawHeaders) {
+      if (k) {
+        headerRecord[k] = h
+        k = ''
+      } else {
+        k = h
+      }
+    }
+
     const res: Response = await fetchCallback(
       new Request(url.toString(), {
         method: method,
+        headers: headerRecord,
       })
     )
 
@@ -35,8 +47,14 @@ export const serve = (option: Options) => {
       outgoing.setHeader(...h)
     }
     outgoing.statusCode = res.status
+
     // TODO
-    outgoing.end(await res.text())
+    if (res.body) {
+      for await (const chunk of res.body) {
+        outgoing.write(chunk)
+      }
+    }
+    outgoing.end()
   })
 
   server.listen(option.port || 3000)
