@@ -1,4 +1,4 @@
-import { createServer } from 'http'
+import { createServer, IncomingMessage, ServerResponse, Server } from 'node:http'
 import { Request, Response, Headers } from 'undici'
 
 const mockTypes = {
@@ -13,27 +13,27 @@ Object.assign(global, mockTypes)
 type Options = {
   fetch: FetchCallback
   port?: number
+  serverOptions?: Object
 }
 
 type FetchCallback = (request: any) => Promise<any>
 
-export const serve = (option: Options) => {
+export const serve = (option: Options): Server => {
   const fetchCallback = option.fetch
-  const server = createServer()
+  const requestListener = getRequestListener(fetchCallback)
+  const server: Server = createServer(option.serverOptions || {}, requestListener)
+  server.listen(option.port || 3000)
+  return server
+}
 
-  server.on('request', async (incoming, outgoing) => {
+const getRequestListener = (fetchCallback: FetchCallback) => {
+  return async (incoming: IncomingMessage, outgoing: ServerResponse) => {
     const method = incoming.method || 'GET'
-    const url = new URL(`http://localhost${incoming.url}`)
+    const url = `http://${incoming.headers.host}${incoming.url}`
 
     const headerRecord: Record<string, string> = {}
-    let k = ''
-    for (const h of incoming.rawHeaders) {
-      if (k) {
-        headerRecord[k] = h
-        k = ''
-      } else {
-        k = h
-      }
+    for (const [k, v] of incoming.rawHeaders) {
+      headerRecord[k] = v
     }
 
     const res: Response = await fetchCallback(
@@ -43,19 +43,26 @@ export const serve = (option: Options) => {
       })
     )
 
-    for (const h of res.headers) {
-      outgoing.setHeader(...h)
+    const contentType = res.headers.get('content-type') || ''
+
+    for (const [k, v] of res.headers) {
+      outgoing.setHeader(k, v)
     }
     outgoing.statusCode = res.status
 
-    // TODO
     if (res.body) {
-      for await (const chunk of res.body) {
-        outgoing.write(chunk)
+      if (contentType.startsWith('text')) {
+        outgoing.end(await res.text())
+      } else if (contentType.startsWith('application/json')) {
+        outgoing.end(await res.text())
+      } else {
+        for await (const chunk of res.body) {
+          outgoing.write(chunk)
+        }
+        outgoing.end()
       }
+    } else {
+      outgoing.end()
     }
-    outgoing.end()
-  })
-
-  server.listen(option.port || 3000)
+  }
 }
